@@ -7,12 +7,13 @@ hyperscan databases with 1 lcore(work thread).
 
 dependencies:
 -------------------------------
--1. modify headroom of m_buf;
--2. hyperscan.
+1. modify headroom of m_buf;
+2. hyperscan.
 
 compile:
 -------------------------------
 LDFLAGS += -lhs
+
 CC = g++ // yeah, if using gcc cause hyperscan link error.
 
 run:

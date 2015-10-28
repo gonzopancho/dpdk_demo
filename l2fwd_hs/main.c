@@ -38,7 +38,7 @@
  * @version 1.0
  * @date 2015-10-27
  * 
- * usage: ./l2fwd_hs -c 3 -n 2 -- -p 3 -q 2 --ptn /path/to/ptn.txt
+ * usage: ./l2fwd_hs -c 3 -n 2 -- -p 3 -q 2 --dec --ptn /path/to/ptn.txt
  * note: 
  * 1. the master lcore don't run main_loop (SKIP_MASTER);
  * 2. if using 2 lcore and 2 ports (-c 3 -p 3), the queues/ports every 
@@ -91,7 +91,7 @@
 #include <rte_mempool.h>
 #include <rte_mbuf.h>
 #include "public.h"
-#include "rubicon.h"
+#include "rubi.h"
 #include "ModuleDecode.h"
 
 #include <hs/hs.h>
@@ -175,15 +175,17 @@ static int64_t timer_period = 10 * TIMER_MILLISECOND * 1000; /* default period i
 #define PTN_MAX     10000
 #define PTN_LEN_MAX 64
 
+int g_dec = 0;
+int g_hs = 0;
 char* g_ptn_file = NULL;
 char* g_ptns[PTN_MAX] = {0};
 uint32_t g_ids[PTN_MAX] = {0};
 uint32_t g_ptn_cnt = 0;
 int g_socket_flag[NB_SOCKETS] = {0};
 hs_database_t *g_db[NB_SOCKETS];
+hs_scratch_t *g_scratch[RTE_MAX_LCORE];
 hs_compile_error_t *g_compileErr;
 hs_error_t g_err;
-hs_scratch_t *g_scratch[RTE_MAX_LCORE];
 
 
 
@@ -282,7 +284,7 @@ int hs_init()
     // check enabled sockets
     for(lcore_id=0; lcore_id<RTE_MAX_LCORE; lcore_id++)
     {
-        if(rte_lcore_is_enabled(lcore_id)) == 0)
+        if(rte_lcore_is_enabled(lcore_id) == 0)
             continue;
         socket_id = rte_lcore_to_socket_id(lcore_id);
         if(socket_id >= NB_SOCKETS)
@@ -331,7 +333,7 @@ int hs_init()
     // alloc scratch on every lcore
     for(lcore_id=0; lcore_id<RTE_MAX_LCORE; lcore_id++)
     {
-        if(rte_lcore_is_enabled(lcore_id)) == 0)
+        if(rte_lcore_is_enabled(lcore_id) == 0)
             continue;
         socket_id = rte_lcore_to_socket_id(lcore_id);
 
@@ -489,6 +491,9 @@ l2fwd_main_loop(void)
 	unsigned i, j, portid, nb_rx;
 	struct lcore_queue_conf *qconf;
 	const uint64_t drain_tsc = (rte_get_tsc_hz() + US_PER_S - 1) / US_PER_S * BURST_TX_DRAIN_US;
+    int enable_decode = g_dec;
+    int enable_hs = g_hs;
+    Packet_t *pPacket;
 
 	prev_tsc = 0;
 	timer_tsc = 0;
@@ -530,6 +535,8 @@ l2fwd_main_loop(void)
 				qconf->tx_mbufs[portid].len = 0;
 			}
 
+/** by zzq, 2015.10.28, disable stats show */
+#if 0
 			/* if timer is enabled */
 			if (timer_period > 0) {
 
@@ -547,6 +554,7 @@ l2fwd_main_loop(void)
 					}
 				}
 			}
+#endif
 
 			prev_tsc = cur_tsc;
 		}
@@ -566,60 +574,66 @@ l2fwd_main_loop(void)
             {
                 m = pkts_burst[j];
                 rte_prefetch0(rte_pktmbuf_mtod(m, void *));
-                Packet_t *pPacket;
 
-                pPacket = (Packet_t *)m->buf_addr;
-                pPacket->pMBuf = m;
-                pPacket->pData = rte_pktmbuf_mtod(m, unsigned char *);
-                pPacket->unLen = rte_pktmbuf_pkt_len(m);
-                pPacket->pEnd = pPacket->pData + pPacket->unLen;
-                pPacket->unNicPortSrc = portid;
-                //pPacket->enDirection = 1;
-                pPacket->enDirection = DIRECTION_IN;
-                pPacket->unNicPortDst = 1;
-                pPacket->unNicPortGroup = 1;
-                pPacket->ullTimeMS = 1000000;
-                pPacket->nOffloadFlag = 0;
-                pPacket->pCurrent = pPacket->pData;
-                pPacket->pIPOuter = NULL;
-                pPacket->pIPInner = NULL;
-                pPacket->pTcpUdpInner = NULL;
-                void * (* NextDecode)(Packet_t * pPacket) = DecodeEth;
-                while(NextDecode)
-                    NextDecode = (void *(*)(Packet_t *))NextDecode(pPacket);
-                if(NULL != pPacket->pTcpUdpInner)
+                if(enable_decode)
                 {
-
-                    DECODE_IP(pPacket->stIpSrc, pPacket->stIpDst, pPacket->unCtrlProtocol, pPacket->pIPInner);
-                    if((IPPROTO_TCP == pPacket->unCtrlProtocol) || (IPPROTO_UDP == pPacket->unCtrlProtocol))
+                    pPacket = (Packet_t *)m->buf_addr;
+                    pPacket->pMBuf = m;
+                    pPacket->pData = rte_pktmbuf_mtod(m, unsigned char *);
+                    pPacket->unLen = rte_pktmbuf_pkt_len(m);
+                    pPacket->pEnd = pPacket->pData + pPacket->unLen;
+                    pPacket->unNicPortSrc = portid;
+                    //pPacket->enDirection = 1;
+                    pPacket->enDirection = DIRECTION_IN;
+                    pPacket->unNicPortDst = 1;
+                    pPacket->unNicPortGroup = 1;
+                    pPacket->ullTimeMS = 1000000;
+                    pPacket->nOffloadFlag = 0;
+                    pPacket->pCurrent = pPacket->pData;
+                    pPacket->pIPOuter = NULL;
+                    pPacket->pIPInner = NULL;
+                    pPacket->pTcpUdpInner = NULL;
+                    void * (* NextDecode)(Packet_t * pPacket) = DecodeEth;
+                    while(NextDecode)
+                        NextDecode = (void *(*)(Packet_t *))NextDecode(pPacket);
+                    if(NULL != pPacket->pTcpUdpInner)
                     {
-                        unsigned char * pCurrent = pPacket->pTcpUdpInner;
-                        pPacket->usPortSrc = READ_SHORT(pCurrent);
-                        pCurrent += 2;
-                        pPacket->usPortDst = READ_SHORT(pCurrent);
 
-                        /** by zzq, 2015.10.27, hyperscan the payload */
-                        pCurrent += 2;
-                        g_err = hs_scan(g_db[socket_id],
-                                        (const char*)pCurrent, // data
-                                        pPacket->pEnd - pCurrent, // data length
-                                        0, // flag
-                                        g_scratch[lcore_id],
-                                        NULL, // matchCallback
-                                        NULL); // user data
-                        if (g_err != HS_SUCCESS) 
+                        DECODE_IP(pPacket->stIpSrc, pPacket->stIpDst, pPacket->unCtrlProtocol, pPacket->pIPInner);
+                        if((IPPROTO_TCP == pPacket->unCtrlProtocol) || (IPPROTO_UDP == pPacket->unCtrlProtocol))
                         {
-                            fprintf(stderr, "HS: ERROR: Unable to scan packet. Exiting.");
-                            exit(-1);
+                            unsigned char * pCurrent = pPacket->pTcpUdpInner;
+                            pPacket->usPortSrc = READ_SHORT(pCurrent);
+                            pCurrent += 2;
+                            pPacket->usPortDst = READ_SHORT(pCurrent);
+
+                        }
+                        else
+                        {
+                            pPacket->usPortSrc = 0;
+                            pPacket->usPortDst = 0;
+                        }
+                        pPacket->pPayload = pPacket->pCurrent;
+
+                        if(enable_hs)
+                        {
+                            /** by zzq, 2015.10.28, hyperscan the payload */
+                            pPacket->unPayloadLen = pPacket->pEnd - pPacket->pPayload;
+                            g_err = hs_scan(g_db[socket_id],
+                                    (const char*)pPacket->pPayload, // data
+                                    pPacket->unPayloadLen, // data length
+                                    0, // flag
+                                    g_scratch[lcore_id],
+                                    NULL, // matchCallback
+                                    NULL); // user data
+                            if (g_err != HS_SUCCESS) 
+                            {
+                                fprintf(stderr, "HS: ERROR: Unable to scan packet. Exiting.");
+                                exit(-1);
+                            }
                         }
                         /** --------------------- */
                     }
-                    else
-                    {
-                        pPacket->usPortSrc = 0;
-                        pPacket->usPortDst = 0;
-                    }
-                    pPacket->pPayload = pPacket->pCurrent;
                 }
                 l2fwd_simple_forward(m, portid);
             }
@@ -642,7 +656,9 @@ l2fwd_usage(const char *prgname)
 	       "  -p PORTMASK: hexadecimal bitmask of ports to configure\n"
 	       "  -q NQ: number of queue (=ports) per lcore (default is 1)\n"
 		   "  -T PERIOD: statistics will be refreshed each PERIOD seconds (0 to disable, 10 default, 86400 maximum)\n"
-           "  --ptn PTN_FILE: pattern file path\n", 
+           "  --dec: enable simple decoding\n"
+           "  --ptn PTN_FILE: pattern file path\n"
+           "note: --ptn will enable simple decoding too\n", 
 	       prgname);
 }
 
@@ -706,6 +722,7 @@ l2fwd_parse_args(int argc, char **argv)
 	int option_index;
 	char *prgname = argv[0];
 	static struct option lgopts[] = {
+        {"dec", 0, 0, 0},
         {"ptn", 1, 0, 0}, 
 		{NULL, 0, 0, 0}
 	};
@@ -749,8 +766,14 @@ l2fwd_parse_args(int argc, char **argv)
 
 		/* long options */
 		case 0:
-            if(!strcmp(lgopts[option_index].name, "ptn"))
+            if(!strcmp(lgopts[option_index].name, "dec"))
             {
+                g_dec = 1;
+            }
+            else if(!strcmp(lgopts[option_index].name, "ptn"))
+            {
+                g_dec = 1;
+                g_hs = 1;
                 g_ptn_file = optarg;
             }
             else
@@ -771,7 +794,7 @@ l2fwd_parse_args(int argc, char **argv)
 	ret = optind-1;
 	optind = 0; /* reset getopt lib */
 
-    if(g_ptn_file == NULL)
+    if(g_hs && g_ptn_file == NULL)
     {
         fprintf(stderr, "no pattern file path!\n");
         l2fwd_usage(prgname);
@@ -845,7 +868,7 @@ main(int argc, char **argv)
 	uint8_t nb_ports;
 	uint8_t nb_ports_available;
 	uint8_t portid, last_port;
-	unsigned lcore_id, rx_lcore_id;
+	unsigned lcore_id, rx_lcore_id, master_lcore_id;
 	unsigned nb_ports_in_mask = 0;
 
 	/* init EAL */
@@ -874,7 +897,8 @@ main(int argc, char **argv)
     
 	if (l2fwd_pktmbuf_pool == NULL)
 		rte_exit(EXIT_FAILURE, "Cannot init mbuf pool\n");
-    printf("mempool size: %d",l2fwd_pktmbuf_pool->size);
+    printf("mempool size: %d\n",l2fwd_pktmbuf_pool->size);
+
 	nb_ports = rte_eth_dev_count();
 	if (nb_ports == 0)
 		rte_exit(EXIT_FAILURE, "No Ethernet ports - bye\n");
@@ -917,6 +941,7 @@ main(int argc, char **argv)
 
 	rx_lcore_id = 0;
 	qconf = NULL;
+    master_lcore_id = rte_get_master_lcore();
 
 	/* Initialize the port/queue configuration of each logical core */
 	for (portid = 0; portid < nb_ports; portid++) 
@@ -929,6 +954,7 @@ main(int argc, char **argv)
          * actually, because rx/tx queue is hard-coded to 1 */
 		/* get the lcore_id for this port */
 		while (rte_lcore_is_enabled(rx_lcore_id) == 0 ||
+               rx_lcore_id == master_lcore_id ||
 		       lcore_queue_conf[rx_lcore_id].n_rx_port == l2fwd_rx_queue_per_lcore) 
         {
 			rx_lcore_id++;
@@ -999,6 +1025,7 @@ main(int argc, char **argv)
 			rte_exit(EXIT_FAILURE, "rte_eth_tx_queue_setup:err=%d, port=%u\n",
 				ret, (unsigned) portid);
 
+
 		/* Start device */
 		ret = rte_eth_dev_start(portid);
 		if (ret < 0)
@@ -1029,10 +1056,13 @@ main(int argc, char **argv)
 
 	check_all_ports_link_status(nb_ports, l2fwd_enabled_port_mask);
 
-    if(hs_init() != 0)
+    if(g_hs)
     {
-        fprintf(stderr, "hyperscan init failed!\n");
-        exit(-1);
+        if(hs_init() != 0)
+        {
+            fprintf(stderr, "hyperscan init failed!\n");
+            exit(-1);
+        }
     }
 
 	/* launch per-lcore init on every lcore */

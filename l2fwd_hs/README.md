@@ -13,8 +13,16 @@ dependencies:
 compile:
 ###
     LDFLAGS += -lhs
-    CC = g++ // yeah, if using gcc cause hyperscan link error.
+    CC = g++ // yeah, using gcc cause hyperscan link error.
 
 run:
 ###
     ./l2fwd -c 3 -n 2 -- -p 3 -q 2 --ptn /path/to/ptn.txt
+
+    -p PORTMASK: hexadecimal bitmask of ports to configure
+    -q NQ: number of queue (=ports) per lcore (default is 1)
+    -T PERIOD: statistics will be refreshed each PERIOD seconds (0 to disable, 10 default, 86400 maximum)
+    --dec: enable simple decoding
+    --ptn PTN_FILE: pattern file path
+    note: --ptn will enable simple decoding too
+

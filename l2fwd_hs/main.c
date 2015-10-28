@@ -605,6 +605,7 @@ l2fwd_main_loop(void)
                             pPacket->usPortSrc = READ_SHORT(pCurrent);
                             pCurrent += 2;
                             pPacket->usPortDst = READ_SHORT(pCurrent);
+                            pPacket->pPayload = 
 
                         }
                         else
@@ -612,11 +613,14 @@ l2fwd_main_loop(void)
                             pPacket->usPortSrc = 0;
                             pPacket->usPortDst = 0;
                         }
-                        pPacket->pPayload = pPacket->pCurrent;
+                        //pPacket->pPayload = pPacket->pCurrent;
 
                         if(enable_hs)
                         {
                             /** by zzq, 2015.10.28, hyperscan the payload */
+                            if(pPacket->unCtrlProtocol == IPPROTO_UDP)
+                                pPacket->pPayload = pPacket->pTcpUdpInner + 8; 
+
                             pPacket->unPayloadLen = pPacket->pEnd - pPacket->pPayload;
                             g_err = hs_scan(g_db[socket_id],
                                     (const char*)pPacket->pPayload, // data

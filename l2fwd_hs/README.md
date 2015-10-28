@@ -12,8 +12,8 @@ dependencies:
 
 compile:
 ###
-    LDFLAGS += -lhs
-    CC = g++ // yeah, using gcc cause hyperscan link error.
+    // link to static library
+    LDFLAGS += -lhs -lstdc++ -lm
 
 run:
 ###

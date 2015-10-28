@@ -44,9 +44,8 @@ APP = l2fwd_hs
 # all source are stored in SRCS-y
 SRCS-y := main.c ModuleDecode.c
 
-CC = g++
-CFLAGS += -g -O0
-#CFLAGS += $(WERROR_FLAGS)
-LDFLAGS += -lhs
+#CFLAGS += -g -O0
+CFLAGS += -O3
+LDFLAGS += -lhs -lstdc++ -lm
 
 include $(RTE_SDK)/mk/rte.extapp.mk

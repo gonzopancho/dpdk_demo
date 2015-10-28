@@ -139,20 +139,19 @@ struct lcore_queue_conf {
 } __rte_cache_aligned;
 struct lcore_queue_conf lcore_queue_conf[RTE_MAX_LCORE];
 
-static struct rte_eth_conf port_conf;
-//static const struct rte_eth_conf port_conf = {
-//	.rxmode = {
-//		.split_hdr_size = 0,
-//		.header_split   = 0, /**< Header Split disabled */
-//		.hw_ip_checksum = 0, /**< IP checksum offload disabled */
-//		.hw_vlan_filter = 0, /**< VLAN filtering disabled */
-//		.jumbo_frame    = 0, /**< Jumbo Frame Support disabled */
-//		.hw_strip_crc   = 0, /**< CRC stripped by hardware */
-//	},
-//	.txmode = {
-//		.mq_mode = ETH_MQ_TX_NONE,
-//	},
-//};
+static const struct rte_eth_conf port_conf = {
+	.rxmode = {
+		.split_hdr_size = 0,
+		.header_split   = 0, /**< Header Split disabled */
+		.hw_ip_checksum = 0, /**< IP checksum offload disabled */
+		.hw_vlan_filter = 0, /**< VLAN filtering disabled */
+		.jumbo_frame    = 0, /**< Jumbo Frame Support disabled */
+		.hw_strip_crc   = 0, /**< CRC stripped by hardware */
+	},
+	.txmode = {
+		.mq_mode = ETH_MQ_TX_NONE,
+	},
+};
 
 struct rte_mempool * l2fwd_pktmbuf_pool = NULL;
 
@@ -271,7 +270,7 @@ static int parse_patterns(char* path)
     return 0;
 }
 
-int hs_init()
+int hs_init(void)
 {
     int ret;
     unsigned lcore_id, socket_id, i;
@@ -897,7 +896,7 @@ main(int argc, char **argv)
     
 	if (l2fwd_pktmbuf_pool == NULL)
 		rte_exit(EXIT_FAILURE, "Cannot init mbuf pool\n");
-    printf("mempool size: %d\n",l2fwd_pktmbuf_pool->size);
+	printf("mempool size: %d\n",l2fwd_pktmbuf_pool->size);
 
 	nb_ports = rte_eth_dev_count();
 	if (nb_ports == 0)
@@ -941,22 +940,22 @@ main(int argc, char **argv)
 
 	rx_lcore_id = 0;
 	qconf = NULL;
-    master_lcore_id = rte_get_master_lcore();
+	master_lcore_id = rte_get_master_lcore();
 
 	/* Initialize the port/queue configuration of each logical core */
 	for (portid = 0; portid < nb_ports; portid++) 
-    {
+	{
 		/* skip ports that are not enabled */
 		if ((l2fwd_enabled_port_mask & (1 << portid)) == 0)
 			continue;
 
-        /** by zzq, 2015.10.27, l2fwd_rx_queue_per_lcore is  l2fwd_rx_port_per_lcore 
-         * actually, because rx/tx queue is hard-coded to 1 */
+		/** by zzq, 2015.10.27, l2fwd_rx_queue_per_lcore is  l2fwd_rx_port_per_lcore 
+		 * actually, because rx/tx queue is hard-coded to 1 */
 		/* get the lcore_id for this port */
 		while (rte_lcore_is_enabled(rx_lcore_id) == 0 ||
-               rx_lcore_id == master_lcore_id ||
-		       lcore_queue_conf[rx_lcore_id].n_rx_port == l2fwd_rx_queue_per_lcore) 
-        {
+				rx_lcore_id == master_lcore_id ||
+				lcore_queue_conf[rx_lcore_id].n_rx_port == l2fwd_rx_queue_per_lcore) 
+		{
 			rx_lcore_id++;
 			if (rx_lcore_id >= RTE_MAX_LCORE)
 				rte_exit(EXIT_FAILURE, "Not enough cores\n");
@@ -975,14 +974,14 @@ main(int argc, char **argv)
 
 
     /** by zzq, 2015.10.27, for C++ compiling */
-    memset(&port_conf, 0, sizeof(struct rte_eth_conf));
-    port_conf.rxmode.split_hdr_size = 0;
-    port_conf.rxmode.header_split   = 0; /**< Header Split disabled */
-    port_conf.rxmode.hw_ip_checksum = 0; /**< IP checksum offload disabled */
-    port_conf.rxmode.hw_vlan_filter = 0; /**< VLAN filtering disabled */
-    port_conf.rxmode.jumbo_frame    = 0; /**< Jumbo Frame Support disabled */
-    port_conf.rxmode.hw_strip_crc   = 0; /**< CRC stripped by hardware */
-    port_conf.txmode.mq_mode = ETH_MQ_TX_NONE;
+    //memset(&port_conf, 0, sizeof(struct rte_eth_conf));
+    //port_conf.rxmode.split_hdr_size = 0;
+    //port_conf.rxmode.header_split   = 0; /**< Header Split disabled */
+    //port_conf.rxmode.hw_ip_checksum = 0; /**< IP checksum offload disabled */
+    //port_conf.rxmode.hw_vlan_filter = 0; /**< VLAN filtering disabled */
+    //port_conf.rxmode.jumbo_frame    = 0; /**< Jumbo Frame Support disabled */
+    //port_conf.rxmode.hw_strip_crc   = 0; /**< CRC stripped by hardware */
+    //port_conf.txmode.mq_mode = ETH_MQ_TX_NONE;
     /** ------------------- */
 
 	/* Initialise each port */

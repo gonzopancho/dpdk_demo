@@ -252,7 +252,7 @@ void * DecodeGTP(Packet_t * pPacket)
     if(GTP_MESSAGE_GTPU != pPacket->pCurrent[1])
     {
         pPacket->enType = PacketTypeUserlog;
-        printf("outer gtp\n");
+        //printf("outer gtp\n");
         return NULL;
     }
     if((*pPacket->pCurrent & 0x0F) == 0x00)

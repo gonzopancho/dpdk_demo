@@ -90,6 +90,8 @@
 #include <rte_ring.h>
 #include <rte_mempool.h>
 #include <rte_mbuf.h>
+#include <rte_malloc.h>
+
 #include "public.h"
 #include "rubi.h"
 #include "ModuleDecode.h"
@@ -183,9 +185,14 @@ uint32_t g_ptn_cnt = 0;
 int g_socket_flag[NB_SOCKETS] = {0};
 hs_database_t *g_db[NB_SOCKETS];
 hs_scratch_t *g_scratch[RTE_MAX_LCORE];
-hs_compile_error_t *g_compileErr;
-hs_error_t g_err;
+//hs_compile_error_t *g_compileErr;
+//hs_error_t hs_err;
 
+
+static void* my_malloc(size_t n)
+{
+    return rte_malloc("hyperscan", n, RTE_CACHE_LINE_SIZE);
+}
 
 
 #define IS_SPACE(c)  ((c) == ' ' || (c) == '\t' || (c) == '\r' || (c) == '\n')
@@ -273,6 +280,8 @@ static int parse_patterns(char* path)
 int hs_init(void)
 {
     int ret;
+    hs_error_t hs_err;
+    hs_compile_error_t* g_compileErr;
     unsigned lcore_id, socket_id, i;
     size_t db_size = 0, scratch_size = 0;
 
@@ -295,12 +304,19 @@ int hs_init(void)
         g_socket_flag[socket_id] = 1;
     }
 
+    hs_err = hs_set_allocator(my_malloc, rte_free);
+    if(hs_err != HS_SUCCESS)
+    {
+        fprintf(stderr, "hs_set_allocator failed!\n");
+        exit(-1);
+    }
+
     // compile ptns on every socket
     for(i=0; i<NB_SOCKETS; i++)
     {
         if(!g_socket_flag[i])
             continue;
-        g_err = hs_compile_multi(g_ptns, 
+        hs_err = hs_compile_multi(g_ptns, 
                     NULL, // flags array
                     g_ids,
                     g_ptn_cnt,
@@ -309,7 +325,7 @@ int hs_init(void)
                     &g_db[i],
                     &g_compileErr);
 
-        if (g_err != HS_SUCCESS) 
+        if (hs_err != HS_SUCCESS) 
         {
             if (g_compileErr->expression < 0) 
             {
@@ -343,18 +359,18 @@ int hs_init(void)
             exit(-1);
         }
 
-        g_err = hs_alloc_scratch(g_db[socket_id], &g_scratch[lcore_id]);
-        if (g_err != HS_SUCCESS) 
+        hs_err = hs_alloc_scratch(g_db[socket_id], &g_scratch[lcore_id]);
+        if (hs_err != HS_SUCCESS) 
         {
             fprintf(stderr, "HS ERROR: could not allocate scratch space");
             exit(-1);
         }
     
-        g_err = hs_database_size(g_db[socket_id], &db_size);
-        if (g_err != HS_SUCCESS)
+        hs_err = hs_database_size(g_db[socket_id], &db_size);
+        if (hs_err != HS_SUCCESS)
             fprintf(stderr, "Error getting Hyperscan database size");
-        g_err = hs_scratch_size(g_scratch[lcore_id], &scratch_size);
-        if (g_err != HS_SUCCESS)
+        hs_err = hs_scratch_size(g_scratch[lcore_id], &scratch_size);
+        if (hs_err != HS_SUCCESS)
             fprintf(stderr, "Error getting Hyperscan sratch size");
 
 
@@ -493,6 +509,7 @@ l2fwd_main_loop(void)
     int enable_decode = g_dec;
     int enable_hs = g_hs;
     Packet_t *pPacket;
+    hs_error_t hs_err;
 
 	prev_tsc = 0;
 	timer_tsc = 0;
@@ -605,8 +622,6 @@ l2fwd_main_loop(void)
                             pPacket->usPortSrc = READ_SHORT(pCurrent);
                             pCurrent += 2;
                             pPacket->usPortDst = READ_SHORT(pCurrent);
-                            pPacket->pPayload = 
-
                         }
                         else
                         {
@@ -622,14 +637,14 @@ l2fwd_main_loop(void)
                                 pPacket->pPayload = pPacket->pTcpUdpInner + 8; 
 
                             pPacket->unPayloadLen = pPacket->pEnd - pPacket->pPayload;
-                            g_err = hs_scan(g_db[socket_id],
+                            hs_err = hs_scan(g_db[socket_id],
                                     (const char*)pPacket->pPayload, // data
                                     pPacket->unPayloadLen, // data length
                                     0, // flag
                                     g_scratch[lcore_id],
                                     NULL, // matchCallback
                                     NULL); // user data
-                            if (g_err != HS_SUCCESS) 
+                            if (hs_err != HS_SUCCESS) 
                             {
                                 fprintf(stderr, "HS: ERROR: Unable to scan packet. Exiting.");
                                 exit(-1);
